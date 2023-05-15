@@ -8,13 +8,13 @@ namespace DemoPipeline
         {
             int zero = 0;
             Pipeline pipeline = new Pipeline();
-            pipeline.AddMiddleware(new Middleware((context) => context.Add("Noeud 1")));
-            pipeline.AddMiddleware(new Middleware((context) => context.Add("Noeud 2")));
-            pipeline.AddMiddleware(new Middleware((context) => context.Add("Noeud 3")));
-            pipeline.AddMiddleware(new Middleware((context) => context.Add("Noeud 4")));
-            pipeline.AddMiddleware(new Middleware((context) => context.Add("Noeud 5")));
-            pipeline.AddMiddleware(new Middleware((context) => context.Add("Noeud 6")));
-            pipeline.AddMiddleware(new Middleware((context) => context.Add((2 / zero).ToString())));
+            pipeline.AddMiddleware(new ActionMiddleware((context) => context.Add("Noeud 1")));
+            pipeline.AddMiddleware(new ActionMiddleware((context) => context.Add("Noeud 2")));
+            pipeline.AddMiddleware(new ActionMiddleware((context) => context.Add("Noeud 3")));
+            pipeline.AddMiddleware(new ActionMiddleware((context) => context.Add("Noeud 4")));
+            pipeline.AddMiddleware(new ActionMiddleware((context) => context.Add("Noeud 5")));
+            pipeline.AddMiddleware(new ActionMiddleware((context) => context.Add("Noeud 6")));
+            //pipeline.AddMiddleware(new ActionMiddleware((context) => context.Add((2 / zero).ToString())));
 
             PipelineContext pipelineContext = pipeline.Start();
             Console.WriteLine(pipelineContext.Result);
@@ -23,67 +23,82 @@ namespace DemoPipeline
 
     class Pipeline
     {
-        private Middleware? _main;
+        private Middleware _main;
 
         public Pipeline() 
-        { 
+        {
+            _main = new ExceptionMiddleware();
         }
 
         public void AddMiddleware(Middleware middleware)
         {
-            if(_main is null)
-                _main = middleware;
-            else
+            Middleware current = _main;
+            while(current.Next is not null)
             {
-                Middleware current = _main;
-                while(current.Next is not null)
-                {
-                    current = current.Next;
-                }
-
-                current.Next = middleware;
+                current = current.Next;
             }
+            current.Next = middleware;
         }
 
         public PipelineContext Start()
         {
             PipelineContext context = new PipelineContext();
-
-            try
-            {
-                if (_main is not null)
-                    _main.Execute(context);
-            }
-            catch (Exception ex)
-            {
-                context.Add(ex);
-            }
-
-
+            _main.Execute(context);
             return context;
         }
     }
 
-    class Middleware
+    abstract class Middleware
     {
-        private Action<PipelineContext> _execute;
-
-        public Middleware(Action<PipelineContext> execute)
+        protected Middleware()
         {
-            _execute = execute;
         }
 
         public Middleware? Next { get; set; }
 
-        public void Execute(PipelineContext pipelineContext)
+        public abstract void Execute(PipelineContext pipelineContext);
+    }
+
+    class ActionMiddleware : Middleware
+    {
+        private Action<PipelineContext> _execute;
+
+        public ActionMiddleware(Action<PipelineContext> execute)
+        {
+            _execute = execute;
+        }
+
+        public override void Execute(PipelineContext pipelineContext)
         {
             _execute(pipelineContext);
 
             if (Next is not null)
-            {                
+            {
                 Next.Execute(pipelineContext);
 
             }
+        }
+    }
+
+    class ExceptionMiddleware : Middleware
+    {
+        public ExceptionMiddleware()
+        {            
+        }
+
+        public override void Execute(PipelineContext context)
+        {
+            try
+            {
+                if (Next is not null)
+                {
+                    Next.Execute(context);
+                }
+            }
+            catch (Exception ex)
+            {
+                context.Add(ex);
+            }            
         }
     }
 
